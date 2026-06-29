@@ -103,12 +103,15 @@ export class BigTwos {
     if (!name || name === "invalid") return false;
     if (!this.firstMoveMade && !has3D) return false; // first move must contain 3 of diamonds
     const empty = this.boardHand.size === 0;
+    const boardPoker = this.boardHand.size >= 4;
     const higher =
       empty ||
-      isPoker ||
-      ((this.boardName === undefined || name == this.boardName) &&
-        (score > this.boardScore ||
-          (score == this.boardScore && (suit as number) > this.boardHigh)));
+      (isPoker && boardPoker
+        ? score > this.boardScore
+        : ids.length === this.boardHand.size &&
+          (this.boardName === undefined || name == this.boardName) &&
+          (score > this.boardScore ||
+            (score == this.boardScore && (suit as number) > this.boardHigh)));
     return !!higher;
   }
 

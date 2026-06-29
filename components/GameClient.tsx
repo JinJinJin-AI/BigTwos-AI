@@ -26,12 +26,15 @@ export default function GameClient({ pid, name }: { pid: string; name: string })
 
   const boardCards = (snap?.board || []).map(fromId);
   const [bName, bScore, bSuit] = boardCards.length ? checkValidHand(boardCards) : [undefined, 0, -1];
+  const boardIsPoker = boardCards.length >= 4;
   const beatsBoard =
     boardCards.length === 0 ||
-    isPoker_ ||
-    ((bName === undefined || name_ == bName) &&
-      ((score_ as number) > (bScore as number) ||
-        ((score_ as number) === (bScore as number) && (suit_ as number) > (bSuit as number))));
+    (isPoker_ && boardIsPoker
+      ? (score_ as number) > (bScore as number)
+      : selectedCards.length === boardCards.length &&
+        (bName === undefined || name_ == bName) &&
+        ((score_ as number) > (bScore as number) ||
+          ((score_ as number) === (bScore as number) && (suit_ as number) > (bSuit as number))));
   const playable = validType && beatsBoard;
 
   if (!snap) {
