@@ -168,8 +168,9 @@ export class BigTwos {
       [array[cur], array[r]] = [array[r], array[cur]];
     }
     const i = array.indexOf(41); // 3 of diamonds
-    if (i < array.length - 42) {
-      const j = array.length - Math.floor(Math.random() * 42) - 1;
+    if (i >= 42) {
+      // dealt cards are indices 0..41; ensure the 3 of diamonds is dealt
+      const j = Math.floor(Math.random() * 42);
       [array[i], array[j]] = [array[j], array[i]];
     }
     return array;
