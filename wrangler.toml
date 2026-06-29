@@ -1,0 +1,16 @@
+name = "bigtwos"
+main = "worker/index.ts"
+compatibility_date = "2025-01-01"
+workers_dev = false
+
+[[durable_objects.bindings]]
+name = "GAME"
+class_name = "GameRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["GameRoom"]
+
+[[routes]]
+pattern = "party.big-twos.com"
+custom_domain = true

@@ -51,9 +51,9 @@ node lib/game/smoke.mjs     # 2-player end-to-end (needs npm run party)
 
 ## Deploy
 
-1. **PartyKit:** `npm run deploy:party` → note the host (e.g. `bigtwos.<you>.partykit.dev`).
+1. **Realtime (Cloudflare Worker + Durable Object, free):** set `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN`, then `npm run cf:deploy` → live at `party.big-twos.com`.
 2. **Vercel:** import repo, set env: `DATABASE_URL`, `JWT_SECRET`,
-   `NEXT_PUBLIC_PARTYKIT_HOST=bigtwos.<you>.partykit.dev`.
+   `NEXT_PUBLIC_PARTYKIT_HOST=party.big-twos.com`.
 3. Provision Neon Postgres, run `lib/db/schema.sql`.
 
 Human-only, 2–4 players. Rooms are designed so AI bots can fill empty seats later.

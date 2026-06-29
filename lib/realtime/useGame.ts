@@ -1,6 +1,5 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import PartySocket from "partysocket";
 import { GameSnapshot } from "@/lib/game/bigtwos";
 
 export interface LobbyPlayer { name: string; ready: boolean; }
@@ -11,11 +10,12 @@ export function useGame(room: string, pid: string, name: string) {
   const [hand, setHand] = useState<number[]>([]);
   const [endVotes, setEndVotes] = useState<{ votes: number; total: number }>({ votes: 0, total: 0 });
   const [youReady, setYouReady] = useState(false);
-  const sockRef = useRef<PartySocket | null>(null);
+  const sockRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
     const host = process.env.NEXT_PUBLIC_PARTYKIT_HOST || "127.0.0.1:1999";
-    const sock = new PartySocket({ host, room });
+    const proto = host.startsWith("localhost") || host.startsWith("127.") ? "ws" : "wss";
+    const sock = new WebSocket(`${proto}://${host}`);
     sockRef.current = sock;
     sock.addEventListener("open", () => sock.send(JSON.stringify({ type: "join", pid, name })));
     sock.addEventListener("message", e => {
@@ -30,7 +30,7 @@ export function useGame(room: string, pid: string, name: string) {
     return () => sock.close();
   }, [room, pid, name]);
 
-  const send = (m: any) => sockRef.current?.send(JSON.stringify(m));
+  const send = (m: any) => sockRef.current?.readyState === 1 && sockRef.current.send(JSON.stringify(m));
   return {
     lobby,
     snapshot,
