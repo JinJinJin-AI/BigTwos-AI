@@ -11,12 +11,14 @@ export function PlayingCard({
   card,
   selected,
   onClick,
-  faceDown
+  faceDown,
+  layoutId
 }: {
   card: CardData;
   selected?: boolean;
   onClick?: () => void;
   faceDown?: boolean;
+  layoutId?: string;
 }) {
   const red = card.suit === "hearts" || card.suit === "diamonds";
   const art = `/faces/${SUIT_INDEX[card.suit]}_${card.rank}.svg`;
@@ -42,6 +44,7 @@ export function PlayingCard({
   return (
     <motion.button
       layout
+      layoutId={layoutId}
       onClick={onClick}
       whileHover={onClick ? { y: -16 } : undefined}
       animate={{ y: selected ? -28 : 0 }}

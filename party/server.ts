@@ -12,11 +12,13 @@ type ClientMsg =
   | { type: "ready" }
   | { type: "move"; cards: number[] }
   | { type: "pass" }
+  | { type: "endVote" }
   | { type: "restart" };
 
 export default class BigTwosRoom implements Party.Server {
   game: BigTwos | null = null;
   members = new Map<string, Member>(); // connId -> member
+  endVotes = new Set<string>(); // pids who voted to end
 
   constructor(readonly room: Party.Room) {}
 
@@ -25,6 +27,8 @@ export default class BigTwosRoom implements Party.Server {
   }
 
   onClose(conn: Party.Connection) {
+    const m = this.members.get(conn.id);
+    if (m) this.endVotes.delete(m.pid);
     this.members.delete(conn.id);
     if (!this.game) this.broadcastLobby();
   }
@@ -54,15 +58,27 @@ export default class BigTwosRoom implements Party.Server {
       const m = this.members.get(sender.id);
       if (m) this.game.makeMove(m.pid, [], true);
       this.broadcastState();
+    } else if (msg.type === "endVote" && this.game) {
+      const m = this.members.get(sender.id);
+      if (m) this.endVotes.add(m.pid);
+      // majority: need more than half (2 players => both required)
+      if (this.endVotes.size * 2 > this.members.size) this.reset();
+      else this.broadcastState();
     } else if (msg.type === "restart") {
-      this.game = null;
-      for (const m of this.members.values()) m.ready = false;
-      this.broadcastLobby();
+      this.reset();
     }
+  }
+
+  reset() {
+    this.game = null;
+    this.endVotes.clear();
+    for (const m of this.members.values()) m.ready = false;
+    this.broadcastLobby();
   }
 
   start() {
     const seats = [...this.members.values()].map(m => ({ pid: m.pid, name: m.name }));
+    this.endVotes.clear();
     this.game = new BigTwos(seats);
     this.broadcastState();
   }
@@ -83,7 +99,13 @@ export default class BigTwosRoom implements Party.Server {
     if (!this.game) return;
     const m = this.members.get(conn.id);
     const snap: GameSnapshot = this.game.snapshot();
-    conn.send(JSON.stringify({ type: "state", snapshot: snap, hand: m ? this.game.playerCards(m.pid) : [] }));
+    conn.send(JSON.stringify({
+      type: "state",
+      snapshot: snap,
+      hand: m ? this.game.playerCards(m.pid) : [],
+      endVotes: this.endVotes.size,
+      totalPlayers: this.members.size
+    }));
   }
   broadcastState() {
     for (const c of this.room.getConnections()) this.pushState(c);

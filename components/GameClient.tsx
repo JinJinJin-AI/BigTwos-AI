@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { LayoutGroup } from "framer-motion";
 import { useGame } from "@/lib/realtime/useGame";
 import { PlayingCard } from "@/components/PlayingCard";
 import { fromId, toId } from "@/lib/game/constants";
@@ -25,14 +26,16 @@ export default function GameClient({ pid, name }: { pid: string; name: string })
 
   if (!snap) {
     return (
-      <div style={{ padding: 40, color: "#fff", textAlign: "center" }}>
-        <h2>Waiting Room</h2>
-        {g.lobby.length === 0 ? (
-          <Spinner label="Connecting…" />
-        ) : (
-          <ul style={{ listStyle: "none" }}>{g.lobby.map((p, i) => <li key={i}>{p.name} {p.ready ? "✅" : "…"}</li>)}</ul>
-        )}
-        <button onClick={g.ready}>I&apos;m ready</button>
+      <div style={{ minHeight: "100vh", backgroundImage: "url(/images/title.png)", backgroundSize: "cover", backgroundPosition: "center", display: "flex", flexDirection: "column", justifyContent: "flex-end", alignItems: "center", paddingBottom: "8vh", color: "#F7ECD3" }}>
+        <div style={{ background: "#5C1A1Acc", border: "3px solid #E9A6A6", borderRadius: 14, padding: "16px 28px", textAlign: "center", minWidth: 260 }}>
+          <h2 style={{ marginBottom: 8 }}>Waiting Room</h2>
+          {g.lobby.length === 0 ? (
+            <Spinner label="Connecting…" />
+          ) : (
+            <ul style={{ listStyle: "none", marginBottom: 12 }}>{g.lobby.map((p, i) => <li key={i}>{p.name} {p.ready ? "✅" : "…"}</li>)}</ul>
+          )}
+          <button onClick={g.ready} style={{ background: "#F7ECD3", color: "#5C1A1A", border: "3px solid #E9A6A6", letterSpacing: 2, boxShadow: "0 5px 0 #C0392B" }}>I&apos;m ready</button>
+        </div>
       </div>
     );
   }
@@ -41,16 +44,17 @@ export default function GameClient({ pid, name }: { pid: string; name: string })
   const board = snap.board.map(fromId);
 
   return (
+    <LayoutGroup>
     <div style={{ minHeight: "100vh", padding: 20, color: "#fff" }}>
       <h2>{snap.gameOver ? `🏆 ${snap.winner === pid ? "You win!" : "Game over"}` : myTurn ? "Your turn" : "Waiting…"}</h2>
       <p style={{ minHeight: 20, opacity: 0.8 }}>{name_ && name_ !== "invalid" ? `Selected: ${name_}` : "\u00a0"}</p>
       <div style={{ display: "flex", gap: 6, minHeight: 140, justifyContent: "center", alignItems: "center", background: "#0002", borderRadius: 12, margin: "12px 0" }}>
-        {board.length ? board.map((c, i) => <PlayingCard key={i} card={c} />) : <span>No cards on the board</span>}
+        {board.length ? board.map(c => <PlayingCard key={toId(c)} layoutId={`c-${toId(c)}`} card={c} />) : <span>No cards on the board</span>}
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center" }}>
         {hand.map(c => {
           const id = toId(c);
-          return <PlayingCard key={id} card={c} selected={selected.has(id)} onClick={() => toggle(id)} />;
+          return <PlayingCard key={id} layoutId={`c-${id}`} card={c} selected={selected.has(id)} onClick={() => toggle(id)} />;
         })}
       </div>
       <div style={{ marginTop: 16, display: "flex", gap: 8, justifyContent: "center", alignItems: "center" }}>
@@ -65,7 +69,15 @@ export default function GameClient({ pid, name }: { pid: string; name: string })
         }}>Pass</button>
         {snap.gameOver && <button onClick={g.restart}>Restart</button>}
         <span style={{ marginLeft: 12, opacity: 0.85 }}>Turn: {snap.players.find(p => p.pid === snap.currentPlayer)?.name}</span>
+        <button
+          onClick={g.endVote}
+          style={{ marginLeft: "auto", background: "#d40000", color: "#fff" }}
+          title="Vote to end the game and return to the waiting room"
+        >
+          End Game {g.endVotes.votes > 0 ? `(${g.endVotes.votes}/${g.endVotes.total})` : ""}
+        </button>
       </div>
     </div>
+    </LayoutGroup>
   );
 }
