@@ -59,7 +59,10 @@ export default function GameClient({ pid, name }: { pid: string; name: string })
           if (!snap.firstMoveMade && ![...selected].some(id => id === 41)) return alert("First move must include the 3 of diamonds.");
           g.move([...selected]); setSelected(new Set());
         }}>Move</button>
-        <button disabled={!myTurn || !snap.firstMoveMade} onClick={() => { g.pass(); setSelected(new Set()); }}>Pass</button>
+        <button disabled={!myTurn} onClick={() => {
+          if (!snap.firstMoveMade) return alert("Can't pass on the opening move — play the 3 of diamonds.");
+          g.pass(); setSelected(new Set());
+        }}>Pass</button>
         {snap.gameOver && <button onClick={g.restart}>Restart</button>}
         <span style={{ marginLeft: 12, opacity: 0.85 }}>Turn: {snap.players.find(p => p.pid === snap.currentPlayer)?.name}</span>
       </div>
