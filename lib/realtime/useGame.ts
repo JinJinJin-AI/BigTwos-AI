@@ -10,6 +10,7 @@ export function useGame(room: string, pid: string, name: string) {
   const [snapshot, setSnapshot] = useState<GameSnapshot | null>(null);
   const [hand, setHand] = useState<number[]>([]);
   const [endVotes, setEndVotes] = useState<{ votes: number; total: number }>({ votes: 0, total: 0 });
+  const [youReady, setYouReady] = useState(false);
   const sockRef = useRef<PartySocket | null>(null);
 
   useEffect(() => {
@@ -19,7 +20,7 @@ export function useGame(room: string, pid: string, name: string) {
     sock.addEventListener("open", () => sock.send(JSON.stringify({ type: "join", pid, name })));
     sock.addEventListener("message", e => {
       const m = JSON.parse(e.data);
-      if (m.type === "lobby") { setLobby(m.players); setSnapshot(null); setHand([]); }
+      if (m.type === "lobby") { setLobby(m.players); setYouReady(!!m.youReady); setSnapshot(null); setHand([]); }
       else if (m.type === "state") {
         setSnapshot(m.snapshot);
         setHand(m.hand || []);
@@ -35,6 +36,7 @@ export function useGame(room: string, pid: string, name: string) {
     snapshot,
     hand,
     endVotes,
+    youReady,
     ready: () => send({ type: "ready" }),
     move: (cards: number[]) => send({ type: "move", cards }),
     pass: () => send({ type: "pass" }),

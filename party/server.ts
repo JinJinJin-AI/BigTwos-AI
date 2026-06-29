@@ -46,7 +46,7 @@ export default class BigTwosRoom implements Party.Server {
       else this.broadcastLobby();
     } else if (msg.type === "ready") {
       const m = this.members.get(sender.id);
-      if (m) m.ready = true;
+      if (m) m.ready = !m.ready;
       const all = [...this.members.values()];
       if (all.length >= 2 && all.every(x => x.ready)) this.start();
       else this.broadcastLobby();
@@ -84,9 +84,11 @@ export default class BigTwosRoom implements Party.Server {
   }
 
   sendLobby(conn: Party.Connection) {
+    const me = this.members.get(conn.id);
     conn.send(
       JSON.stringify({
         type: "lobby",
+        youReady: !!me?.ready,
         players: [...this.members.values()].map(m => ({ name: m.name, ready: m.ready }))
       })
     );
