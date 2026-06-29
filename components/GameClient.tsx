@@ -21,8 +21,18 @@ export default function GameClient({ pid, name }: { pid: string; name: string })
   const snap = g.snapshot;
   const myTurn = snap?.currentPlayer === pid;
   const selectedCards = [...selected].map(fromId);
-  const [name_] = checkValidHand(selectedCards);
-  const playable = selectedCards.length > 0 && name_ && name_ !== "invalid";
+  const [name_, score_, suit_, isPoker_] = checkValidHand(selectedCards);
+  const validType = selectedCards.length > 0 && name_ && name_ !== "invalid";
+
+  const boardCards = (snap?.board || []).map(fromId);
+  const [bName, bScore, bSuit] = boardCards.length ? checkValidHand(boardCards) : [undefined, 0, -1];
+  const beatsBoard =
+    boardCards.length === 0 ||
+    isPoker_ ||
+    ((bName === undefined || name_ == bName) &&
+      ((score_ as number) > (bScore as number) ||
+        ((score_ as number) === (bScore as number) && (suit_ as number) > (bSuit as number))));
+  const playable = validType && beatsBoard;
 
   if (!snap) {
     return (
