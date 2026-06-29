@@ -65,7 +65,7 @@ export function PlayingCard({
           <img
             src={art}
             alt=""
-            style={{ position: "absolute", inset: 0, margin: "auto", maxWidth: 52, maxHeight: 70 }}
+            style={{ position: "absolute", inset: "22px 8px 8px", width: "calc(100% - 16px)", height: "calc(100% - 30px)", objectFit: "contain" }}
           />
           {corner(false)}
           {corner(true)}

@@ -53,10 +53,15 @@ export default function GameClient({ pid, name }: { pid: string; name: string })
           return <PlayingCard key={id} card={c} selected={selected.has(id)} onClick={() => toggle(id)} />;
         })}
       </div>
-      <div style={{ marginTop: 16, display: "flex", gap: 8, justifyContent: "center" }}>
-        <button disabled={!myTurn || !playable} onClick={() => { g.move([...selected]); setSelected(new Set()); }}>Move</button>
+      <div style={{ marginTop: 16, display: "flex", gap: 8, justifyContent: "center", alignItems: "center" }}>
+        <button disabled={!playable} onClick={() => {
+          if (!myTurn) return alert("Not your turn yet.");
+          if (!snap.firstMoveMade && ![...selected].some(id => id === 41)) return alert("First move must include the 3 of diamonds.");
+          g.move([...selected]); setSelected(new Set());
+        }}>Move</button>
         <button disabled={!myTurn || !snap.firstMoveMade} onClick={() => { g.pass(); setSelected(new Set()); }}>Pass</button>
         {snap.gameOver && <button onClick={g.restart}>Restart</button>}
+        <span style={{ marginLeft: 12, opacity: 0.85 }}>Turn: {snap.players.find(p => p.pid === snap.currentPlayer)?.name}</span>
       </div>
     </div>
   );
