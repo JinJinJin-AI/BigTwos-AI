@@ -1,0 +1,15 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  background: #2f7d52 radial-gradient(circle at 50% 20%, #45a173, #2f7d52);
+  font-family: "Open Sans", system-ui, sans-serif;
+  color: #fff;
+}
+button {
+  background: #ffd166; color: #333; border: 0; border-radius: 8px;
+  padding: 8px 16px; font-weight: 600; cursor: pointer; margin: 2px;
+}
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+input { padding: 8px; border-radius: 6px; border: 1px solid #0003; }
+a { color: #ffd166; }
+table th, table td { padding: 6px; text-align: left; }
