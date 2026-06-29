@@ -4,6 +4,7 @@ import { useGame } from "@/lib/realtime/useGame";
 import { PlayingCard } from "@/components/PlayingCard";
 import { fromId, toId } from "@/lib/game/constants";
 import { sort, checkValidHand } from "@/lib/game/engine";
+import { Spinner } from "@/components/Spinner";
 
 export default function GameClient({ pid, name }: { pid: string; name: string }) {
   const g = useGame("main", pid, name);
@@ -24,9 +25,13 @@ export default function GameClient({ pid, name }: { pid: string; name: string })
 
   if (!snap) {
     return (
-      <div style={{ padding: 40, color: "#fff" }}>
+      <div style={{ padding: 40, color: "#fff", textAlign: "center" }}>
         <h2>Waiting Room</h2>
-        <ul>{g.lobby.map((p, i) => <li key={i}>{p.name} {p.ready ? "✅" : "…"}</li>)}</ul>
+        {g.lobby.length === 0 ? (
+          <Spinner label="Connecting…" />
+        ) : (
+          <ul style={{ listStyle: "none" }}>{g.lobby.map((p, i) => <li key={i}>{p.name} {p.ready ? "✅" : "…"}</li>)}</ul>
+        )}
         <button onClick={g.ready}>I&apos;m ready</button>
       </div>
     );
@@ -38,13 +43,14 @@ export default function GameClient({ pid, name }: { pid: string; name: string })
   return (
     <div style={{ minHeight: "100vh", padding: 20, color: "#fff" }}>
       <h2>{snap.gameOver ? `🏆 ${snap.winner === pid ? "You win!" : "Game over"}` : myTurn ? "Your turn" : "Waiting…"}</h2>
+      <p style={{ minHeight: 20, opacity: 0.8 }}>{name_ && name_ !== "invalid" ? `Selected: ${name_}` : "\u00a0"}</p>
       <div style={{ display: "flex", gap: 6, minHeight: 140, justifyContent: "center", alignItems: "center", background: "#0002", borderRadius: 12, margin: "12px 0" }}>
         {board.length ? board.map((c, i) => <PlayingCard key={i} card={c} />) : <span>No cards on the board</span>}
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center" }}>
         {hand.map(c => {
           const id = toId(c);
-          return <PlayingCard key={id} card={c} selected={selected.has(id)} onClick={() => myTurn && toggle(id)} />;
+          return <PlayingCard key={id} card={c} selected={selected.has(id)} onClick={() => toggle(id)} />;
         })}
       </div>
       <div style={{ marginTop: 16, display: "flex", gap: 8, justifyContent: "center" }}>

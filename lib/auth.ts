@@ -7,7 +7,7 @@ const enc = new TextEncoder();
 const secret = () => enc.encode(process.env.JWT_SECRET || "dev-insecure-secret");
 
 export async function hashPassword(pw: string) {
-  return bcrypt.hash(pw, 12);
+  return bcrypt.hash(pw, 10);
 }
 export async function verifyPassword(pw: string, hash: string) {
   return bcrypt.compare(pw, hash);
