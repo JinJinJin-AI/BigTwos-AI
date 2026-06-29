@@ -30,6 +30,18 @@ npm run dev                 # http://localhost:3000
 First account created becomes the **admin** (manage users at `/admin`).
 Initialize the DB once with `lib/db/schema.sql` (or it auto-creates on first signup).
 
+### Managing accounts (CLI)
+
+Passwords are stored as bcrypt hashes and **cannot** be read back. To inspect or reset:
+
+```sh
+npm run users:list                              # list every account (no hashes)
+npm run users:reset -- <username> <newPassword> # reset a password
+npm run admin:create -- <username> "<Name>" <pw># create/grant an admin (recovery)
+```
+
+All three read `DATABASE_URL` from `.env`.
+
 ## Tests
 
 ```sh

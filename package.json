@@ -12,6 +12,9 @@
     "start": "next start",
     "lint": "next lint",
     "test": "tsx lib/game/engine.test.ts",
+    "users:list": "node --env-file=.env scripts/users-list.mjs",
+    "users:reset": "node --env-file=.env scripts/users-reset.mjs",
+    "admin:create": "node --env-file=.env scripts/admin-create.mjs",
     "deploy:party": "partykit deploy"
   },
   "dependencies": {
