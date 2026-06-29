@@ -4,7 +4,11 @@ import { cookies } from "next/headers";
 
 const COOKIE = "bt_session";
 const enc = new TextEncoder();
-const secret = () => enc.encode(process.env.JWT_SECRET || "dev-insecure-secret");
+const secret = () => {
+  const s = process.env.JWT_SECRET;
+  if (!s) throw new Error("JWT_SECRET is not set");
+  return enc.encode(s);
+};
 
 export async function hashPassword(pw: string) {
   return bcrypt.hash(pw, 10);

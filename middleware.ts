@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify } from "jose";
 
 const PROTECTED = ["/game", "/admin"];
-const secret = () => new TextEncoder().encode(process.env.JWT_SECRET || "dev-insecure-secret");
+const secret = () => {
+  const s = process.env.JWT_SECRET;
+  if (!s) throw new Error("JWT_SECRET is not set");
+  return new TextEncoder().encode(s);
+};
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
