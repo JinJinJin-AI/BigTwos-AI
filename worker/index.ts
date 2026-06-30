@@ -60,6 +60,14 @@ export class GameRoom {
       ws.serializeAttachment({ pid: msg.pid, name: msg.name, ready: false } as Attach);
       if (this.game) this.broadcastState(); // refresh everyone so observers list updates
       else this.broadcastLobby();
+    } else if (msg.type === "chat") {
+      // Ephemeral chat: broadcast and forget. Never stored.
+      const a = ws.deserializeAttachment() as Attach;
+      const text = String(msg.text ?? "").slice(0, 200).trim();
+      if (a?.name && text) {
+        const payload = JSON.stringify({ type: "chat", name: a.name, text });
+        for (const c of this.state.getWebSockets()) { try { c.send(payload); } catch { /* noop */ } }
+      }
     } else if (msg.type === "ready") {
       const a = ws.deserializeAttachment() as Attach;
       ws.serializeAttachment({ ...a, ready: !a.ready });

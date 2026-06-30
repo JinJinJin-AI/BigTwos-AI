@@ -6,6 +6,28 @@ import { PlayingCard } from "@/components/PlayingCard";
 import { fromId, toId } from "@/lib/game/constants";
 import { sort, evaluateHand } from "@/lib/game/engine";
 import { Spinner } from "@/components/Spinner";
+import { ChatOverlay } from "@/components/ChatOverlay";
+
+function ChatBar({ onSend }: { onSend: (t: string) => void }) {
+  const [text, setText] = useState("");
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const t = text.trim();
+    if (t) { onSend(t); setText(""); }
+  };
+  return (
+    <form onSubmit={submit} style={{ position: "fixed", bottom: 14, left: "50%", transform: "translateX(-50%)", display: "flex", gap: 6, zIndex: 60 }}>
+      <input
+        value={text}
+        onChange={e => setText(e.target.value)}
+        maxLength={200}
+        placeholder="Say something…"
+        style={{ width: 220, background: "#F7ECD3", color: "#5C1A1A" }}
+      />
+      <button type="submit">Send</button>
+    </form>
+  );
+}
 
 export default function GameClient({ pid, name }: { pid: string; name: string }) {
   // Dev and prod never share a room, so local play can never join a live prod game.
@@ -41,17 +63,21 @@ export default function GameClient({ pid, name }: { pid: string; name: string })
 
   if (!snap) {
     return (
-      <div style={{ minHeight: "100vh", backgroundImage: "url(/images/title.png)", backgroundSize: "cover", backgroundPosition: "center", display: "flex", flexDirection: "column", justifyContent: "flex-end", alignItems: "center", paddingBottom: "32vh", color: "#F7ECD3" }}>
-        <div style={{ background: "#5C1A1Acc", border: "3px solid #E9A6A6", borderRadius: 14, padding: "21px 36px", textAlign: "center", minWidth: 338, fontSize: "1.3em" }}>
-          <h2 style={{ marginBottom: 8 }}>Waiting Room</h2>
-          {g.lobby.length === 0 ? (
-            <Spinner label="Connecting…" />
-          ) : (
-            <ul style={{ listStyle: "none", marginBottom: 12 }}>{g.lobby.map((p, i) => <li key={i}>{p.name} {p.ready ? "✅" : "…"}</li>)}</ul>
-          )}
-          <button onClick={g.ready} style={{ background: "#F7ECD3", color: "#5C1A1A", border: "3px solid #E9A6A6", letterSpacing: 2, boxShadow: "0 5px 0 #C0392B", padding: "10px 21px", fontSize: "1em" }}>{g.youReady ? "Undo" : "I'm ready"}</button>
+      <>
+        <ChatOverlay chats={g.chats} />
+        <ChatBar onSend={g.sendChat} />
+        <div style={{ minHeight: "100vh", backgroundImage: "url(/images/title.png)", backgroundSize: "cover", backgroundPosition: "center", display: "flex", flexDirection: "column", justifyContent: "flex-end", alignItems: "center", paddingBottom: "32vh", color: "#F7ECD3" }}>
+          <div style={{ background: "#5C1A1Acc", border: "3px solid #E9A6A6", borderRadius: 14, padding: "21px 36px", textAlign: "center", minWidth: 338, fontSize: "1.3em" }}>
+            <h2 style={{ marginBottom: 8 }}>Waiting Room</h2>
+            {g.lobby.length === 0 ? (
+              <Spinner label="Connecting…" />
+            ) : (
+              <ul style={{ listStyle: "none", marginBottom: 12 }}>{g.lobby.map((p, i) => <li key={i}>{p.name} {p.ready ? "✅" : "…"}</li>)}</ul>
+            )}
+            <button onClick={g.ready} style={{ background: "#F7ECD3", color: "#5C1A1A", border: "3px solid #E9A6A6", letterSpacing: 2, boxShadow: "0 5px 0 #C0392B", padding: "10px 21px", fontSize: "1em" }}>{g.youReady ? "Undo" : "I'm ready"}</button>
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
@@ -60,7 +86,9 @@ export default function GameClient({ pid, name }: { pid: string; name: string })
 
   return (
     <LayoutGroup>
-      <div style={{ minHeight: "100vh", padding: 20, color: "#fff" }}>
+      <ChatOverlay chats={g.chats} />
+      <ChatBar onSend={g.sendChat} />
+      <div style={{ minHeight: "100vh", padding: "20px 20px 76px", color: "#fff" }}>
         {!g.connected && (
           <div style={{ position: "fixed", top: 0, left: 0, right: 0, background: "#C0392B", color: "#fff", textAlign: "center", padding: 6, zIndex: 50 }}>
             Reconnecting…

@@ -11,6 +11,7 @@ export function useGame(room: string, pid: string, name: string) {
   const [endVotes, setEndVotes] = useState<{ votes: number; total: number }>({ votes: 0, total: 0 });
   const [observers, setObservers] = useState<{ name: string }[]>([]);
   const [isObserver, setIsObserver] = useState(false);
+  const [chats, setChats] = useState<{ id: number; name: string; text: string; x: number; y: number }[]>([]);
   const [youReady, setYouReady] = useState(false);
   const [connected, setConnected] = useState(false);
   const sockRef = useRef<WebSocket | null>(null);
@@ -44,6 +45,14 @@ export function useGame(room: string, pid: string, name: string) {
           setObservers(m.observers || []);
           setIsObserver(!!m.youAreObserver);
         }
+        else if (m.type === "chat") {
+          // ephemeral: show a floating bubble with a slightly varied start, auto-remove after 10s
+          const id = Date.now() + Math.random();
+          const x = 12 + Math.random() * 60; // 12%..72% from left
+          const y = 14 + Math.random() * 22; // 14%..36% from bottom
+          setChats(cs => [...cs, { id, name: m.name, text: m.text, x, y }]);
+          setTimeout(() => setChats(cs => cs.filter(c => c.id !== id)), 10000);
+        }
       });
       sock.addEventListener("close", () => {
         setConnected(false);
@@ -70,12 +79,14 @@ export function useGame(room: string, pid: string, name: string) {
     endVotes,
     observers,
     isObserver,
+    chats,
     youReady,
     connected,
     ready: () => send({ type: "ready" }),
     move: (cards: number[]) => send({ type: "move", cards }),
     pass: () => send({ type: "pass" }),
     endVote: () => send({ type: "endVote" }),
-    restart: () => send({ type: "restart" })
+    restart: () => send({ type: "restart" }),
+    sendChat: (text: string) => send({ type: "chat", text })
   };
 }
