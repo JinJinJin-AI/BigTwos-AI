@@ -4,7 +4,7 @@ import { LayoutGroup } from "framer-motion";
 import { useGame } from "@/lib/realtime/useGame";
 import { PlayingCard } from "@/components/PlayingCard";
 import { fromId, toId } from "@/lib/game/constants";
-import { sort, checkValidHand } from "@/lib/game/engine";
+import { sort, evaluateHand } from "@/lib/game/engine";
 import { Spinner } from "@/components/Spinner";
 
 export default function GameClient({ pid, name }: { pid: string; name: string }) {
@@ -21,11 +21,11 @@ export default function GameClient({ pid, name }: { pid: string; name: string })
   const snap = g.snapshot;
   const myTurn = snap?.currentPlayer === pid;
   const selectedCards = [...selected].map(fromId);
-  const [name_, score_, suit_, isPoker_] = checkValidHand(selectedCards);
+  const [name_, score_, suit_, isPoker_] = evaluateHand(selectedCards);
   const validType = selectedCards.length > 0 && name_ && name_ !== "invalid";
 
   const boardCards = (snap?.board || []).map(fromId);
-  const [bName, bScore, bSuit] = boardCards.length ? checkValidHand(boardCards) : [undefined, 0, -1];
+  const [bName, bScore, bSuit] = boardCards.length ? evaluateHand(boardCards) : [undefined, 0, -1];
   const boardIsPoker = boardCards.length >= 4;
   const beatsBoard =
     boardCards.length === 0 ||

@@ -153,6 +153,30 @@ export function checkValidHand(
   return [name, score, highSuit, isPoker, has3D];
 }
 
+/**
+ * Wraps the preserved checkValidHand to guard a known false-positive: its straight
+ * detection only checks ranks fit a 5-window, so hands with duplicate ranks like
+ * 6,6,7,7,8 or 6,6,7,8,9 are wrongly reported as "straight". A real 5-card hand is
+ * EITHER a full house (rank counts {3,2}) OR has 5 distinct ranks (straight/flush/
+ * straight flush/royal). Anything else is invalid. checkValidHand itself is untouched.
+ */
+export function evaluateHand(
+  cards: CardData[]
+): [string | undefined, number, number | undefined, boolean, boolean] {
+  const res = checkValidHand(cards);
+  const name = res[0];
+  if (cards.length === 5 && name && name !== "invalid") {
+    const counts: Record<number, number> = {};
+    for (const c of cards) counts[c.rank] = (counts[c.rank] || 0) + 1;
+    const dist = Object.values(counts).sort();
+    const isFullHouse = dist.length === 2 && dist[0] === 2 && dist[1] === 3;
+    const fiveDistinct = dist.length === 5;
+    const valid = name === "full house" ? isFullHouse : fiveDistinct;
+    if (!valid) return ["invalid", 0, res[2], res[3], res[4]];
+  }
+  return res;
+}
+
 // sort for hand display: 2 highest, then A, then numeric
 export function sort(a: CardData, b: CardData) {
   let sub = a.rank - b.rank;

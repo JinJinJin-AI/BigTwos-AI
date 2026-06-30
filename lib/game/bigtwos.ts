@@ -1,4 +1,4 @@
-import { checkValidHand } from "./engine";
+import { checkValidHand, evaluateHand } from "./engine";
 import { CardData, fromId, toId } from "./constants";
 
 export interface PublicPlayerState {
@@ -99,7 +99,7 @@ export class BigTwos {
   /** Server-side validity: must be valid type, beat board, and clear first-move. */
   validate(ids: number[]): boolean {
     const hand = this.cards(ids);
-    const [name, score, suit, isPoker, has3D] = checkValidHand(hand);
+    const [name, score, suit, isPoker, has3D] = evaluateHand(hand);
     if (!name || name === "invalid") return false;
     if (!this.firstMoveMade && !has3D) return false; // first move must contain 3 of diamonds
     const empty = this.boardHand.size === 0;
