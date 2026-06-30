@@ -28,3 +28,11 @@ ok("6h6c pair suit = hearts(2)", pairHeartClub === 2);
 ok("6d6s (3) beats 6h6c (2)", (pairSpadeDiamond as number) > (pairHeartClub as number));
 // single still uses its own suit
 ok("single 6c suit = clubs(1)", evaluateHand([C(6,"clubs")])[2] === 1);
+
+// full house ranked by TRIPLE rank (2 highest), not the pair / max number
+const fh222 = evaluateHand([C(2,"spades"),C(2,"hearts"),C(2,"clubs"),C(8,"diamonds"),C(8,"spades")])[1] as number;
+const fhKKK = evaluateHand([C(13,"spades"),C(13,"hearts"),C(13,"clubs"),C(5,"diamonds"),C(5,"spades")])[1] as number;
+const fh333 = evaluateHand([C(3,"spades"),C(3,"hearts"),C(3,"clubs"),C(13,"diamonds"),C(13,"spades")])[1] as number;
+ok("2-triple FH beats K-triple FH", fh222 > fhKKK);
+ok("K-triple FH beats 3-triple FH", fhKKK > fh333);
+ok("triple rank decides, pair ignored", fh222 > fh333);

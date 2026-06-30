@@ -173,6 +173,14 @@ export function evaluateHand(
     const fiveDistinct = dist.length === 5;
     const valid = name === "full house" ? isFullHouse : fiveDistinct;
     if (!valid) return ["invalid", 0, res[2], res[3], res[4]];
+    // A full house is ranked by its TRIPLE's rank (2 highest). checkValidHand scores
+    // it off `highCard`, which gets polluted by the pair (e.g. 2,2,2,8,8 scores as 8),
+    // so recompute the score from the triple using the same Big-Two formula/multiplier.
+    if (name === "full house") {
+      const tripleRank = Number(Object.keys(counts).find(r => counts[Number(r)] === 3));
+      const bt = (r: number) => (r < 3 ? r + 13 : r - 2); // 3..K => 1..11, A => 14, 2 => 15
+      return [name, bt(tripleRank) * 183, res[2], res[3], res[4]];
+    }
   }
   // For singles/doubles/triples/four-of-a-kind the comparison suit is the HIGHEST
   // suit among the cards. checkValidHand's `if (S) highSuit = highCardSuit` makes it
