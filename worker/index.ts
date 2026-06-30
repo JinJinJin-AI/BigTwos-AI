@@ -8,7 +8,7 @@ export interface Env {
 }
 
 const IDLE_WARN = 8 * 60 * 1000;   // show "still here?" warning at 8 min idle
-const IDLE_EXPIRE = 10 * 60 * 1000; // expire game at 10 min idle (120s after warning)
+const IDLE_EXPIRE = 5 * 60 * 1000; // expire game at 5 min idle (120s after warning)
 const AUTO_MS = 5000;   // all-elected start countdown
 const ANYWAY_MS = 10000; // begin-anyway start countdown
 
