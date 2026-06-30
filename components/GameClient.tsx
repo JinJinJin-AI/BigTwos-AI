@@ -56,9 +56,9 @@ export default function GameClient({ pid, name }: { pid: string; name: string })
     (isPoker_ && boardIsPoker
       ? (score_ as number) > (bScore as number)
       : selectedCards.length === boardCards.length &&
-        (bName === undefined || name_ == bName) &&
-        ((score_ as number) > (bScore as number) ||
-          ((score_ as number) === (bScore as number) && (suit_ as number) > (bSuit as number))));
+      (bName === undefined || name_ == bName) &&
+      ((score_ as number) > (bScore as number) ||
+        ((score_ as number) === (bScore as number) && (suit_ as number) > (bSuit as number))));
   const playable = validType && beatsBoard;
 
   if (!snap) {
@@ -138,7 +138,7 @@ export default function GameClient({ pid, name }: { pid: string; name: string })
             </div>
           </div>
         )}
-        <h2>{snap.gameOver ? `🏆 ${snap.winner === pid ? "You win!" : "Game over"}` : g.isObserver ? "👁 Observing — you joined after the game started" : myTurn ? "Your turn" : "Waiting…"}</h2>
+        <h2>{snap.gameOver ? `🏆 ${snap.winner === pid ? "You win!" : "Game over"}` : g.isObserver ? "👁 Observing" : myTurn ? "Your turn" : "Waiting…"}</h2>
         <p style={{ minHeight: 20, opacity: 0.8 }}>{name_ && name_ !== "invalid" ? `Selected: ${name_}` : "\u00a0"}</p>
         <div style={{ display: "flex", gap: 6, minHeight: 140, justifyContent: "center", alignItems: "center", background: "#0002", borderRadius: 12, margin: "12px 0" }}>
           {board.length ? board.map(c => <PlayingCard key={toId(c)} layoutId={`c-${toId(c)}`} card={c} />) : <span>No cards on the board</span>}
