@@ -27,14 +27,14 @@ export interface Session {
 export async function createSession(s: Session) {
   const token = await new SignJWT(s as any)
     .setProtectedHeader({ alg: "HS256" })
-    .setExpirationTime("7d")
+    .setExpirationTime("1h")
     .sign(secret());
   (await cookies()).set(COOKIE, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
-    maxAge: 60 * 60 * 24 * 7
+    maxAge: 60 * 60
   });
 }
 

@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { LayoutGroup } from "framer-motion";
 import { useGame } from "@/lib/realtime/useGame";
 import { PlayingCard } from "@/components/PlayingCard";
@@ -34,6 +34,15 @@ export default function GameClient({ pid, name }: { pid: string; name: string })
   const room = process.env.NODE_ENV === "production" ? "main" : "dev";
   const g = useGame(room, pid, name);
   const [selected, setSelected] = useState<Set<number>>(new Set());
+
+  // Sliding session: keep the 1h token fresh while this tab is open so an
+  // ongoing game is never interrupted by token expiry.
+  useEffect(() => {
+    const refresh = () => fetch("/api/auth/refresh", { method: "POST" }).catch(() => {});
+    refresh();
+    const t = setInterval(refresh, 15 * 60 * 1000);
+    return () => clearInterval(t);
+  }, []);
 
   const toggle = (id: number) => {
     const next = new Set(selected);

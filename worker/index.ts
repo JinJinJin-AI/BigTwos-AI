@@ -1,7 +1,8 @@
 import { BigTwos, GameSnapshot, GameState } from "../lib/game/bigtwos";
 
 type Election = "none" | "observer" | "player";
-interface Attach { pid: string; name: string; election: Election; anyway: boolean; }
+interface Attach { pid: string; name: string; }
+interface Choice { election: Election; anyway: boolean; }
 
 export interface Env {
   GAME: DurableObjectNamespace;
@@ -28,6 +29,7 @@ export default {
 export class GameRoom {
   game: BigTwos | null = null;
   endVotes = new Set<string>();
+  elections = new Map<string, Choice>(); // keyed by pid, shared across a user's tabs
   lastActivity = 0;
   startAt: number | null = null;
   startKind: "auto" | "anyway" | null = null;
@@ -37,6 +39,7 @@ export class GameRoom {
       const gs = await this.state.storage.get<GameState>("game");
       this.game = gs ? BigTwos.restore(gs) : null;
       this.endVotes = new Set(await this.state.storage.get<string[]>("endVotes") || []);
+      this.elections = new Map(await this.state.storage.get<[string, Choice][]>("elections") || []);
       this.lastActivity = await this.state.storage.get<number>("lastActivity") || 0;
       this.startAt = (await this.state.storage.get<number>("startAt")) ?? null;
       this.startKind = (await this.state.storage.get<"auto" | "anyway">("startKind")) ?? null;
@@ -48,7 +51,7 @@ export class GameRoom {
     const pair = new WebSocketPair();
     const client = pair[0], server = pair[1];
     this.state.acceptWebSocket(server);
-    server.serializeAttachment({ pid: "", name: "", election: "none", anyway: false } as Attach);
+    server.serializeAttachment({ pid: "", name: "" } as Attach);
     return new Response(null, { status: 101, webSocket: client });
   }
 
@@ -61,14 +64,30 @@ export class GameRoom {
     return m;
   }
 
+  // One logical member per distinct connected user (pid), with their shared
+  // election (kept room-side keyed by pid, so all of a user's tabs agree).
+  uniqueMembers(): { pid: string; name: string; election: Election; anyway: boolean }[] {
+    const byPid = new Map<string, { pid: string; name: string }>();
+    for (const a of this.members().values()) if (!byPid.has(a.pid)) byPid.set(a.pid, a);
+    return [...byPid.values()].map(a => {
+      const c = this.elections.get(a.pid) || { election: "none" as Election, anyway: false };
+      return { pid: a.pid, name: a.name, election: c.election, anyway: c.anyway };
+    });
+  }
+
+  connectedPids(): Set<string> {
+    const s = new Set<string>();
+    for (const a of this.members().values()) s.add(a.pid);
+    return s;
+  }
+
   async webSocketMessage(ws: WebSocket, raw: string) {
     if (raw === "ping") return;
     let msg: any;
     try { msg = JSON.parse(raw); } catch { return; }
 
     if (msg.type === "join") {
-      const prev = ws.deserializeAttachment() as Attach;
-      ws.serializeAttachment({ pid: msg.pid, name: msg.name, election: prev?.election ?? "none", anyway: prev?.anyway ?? false });
+      ws.serializeAttachment({ pid: msg.pid, name: msg.name } as Attach);
       if (this.game) this.broadcastState();
       else await this.recomputeWaiting();
     } else if (msg.type === "chat") {
@@ -81,14 +100,18 @@ export class GameRoom {
     } else if (msg.type === "elect" && !this.game) {
       const a = ws.deserializeAttachment() as Attach;
       const choice: Election = msg.choice;
-      if (choice === "none" || choice === "observer" || choice === "player") {
-        ws.serializeAttachment({ ...a, election: choice, anyway: choice === "player" ? a.anyway : false });
+      if (a?.pid && (choice === "none" || choice === "observer" || choice === "player")) {
+        const prev = this.elections.get(a.pid);
+        this.elections.set(a.pid, { election: choice, anyway: choice === "player" ? !!prev?.anyway : false });
+        await this.saveElections();
         await this.recomputeWaiting();
       }
     } else if (msg.type === "beginAnyway" && !this.game) {
       const a = ws.deserializeAttachment() as Attach;
-      if (a.election === "player") {
-        ws.serializeAttachment({ ...a, anyway: !a.anyway });
+      const cur = a?.pid ? this.elections.get(a.pid) : undefined;
+      if (cur && cur.election === "player") {
+        this.elections.set(a.pid, { ...cur, anyway: !cur.anyway });
+        await this.saveElections();
         await this.recomputeWaiting();
       }
     } else if (msg.type === "stillHere" && this.game) {
@@ -122,9 +145,26 @@ export class GameRoom {
   }
 
   async webSocketClose(ws: WebSocket) {
+    const a = ws.deserializeAttachment() as Attach | null;
     try { ws.close(); } catch { /* already closing */ }
+    // Drop a user's election only once all their tabs are gone.
+    if (a?.pid && !this.game) {
+      const stillHere = [...this.members().keys()].some(c => {
+        if (c === ws) return false;
+        const ca = c.deserializeAttachment() as Attach | null;
+        return ca?.pid === a.pid;
+      });
+      if (!stillHere && this.elections.has(a.pid)) {
+        this.elections.delete(a.pid);
+        await this.saveElections();
+      }
+    }
     if (this.game) this.broadcastState();
     else await this.recomputeWaiting();
+  }
+
+  async saveElections() {
+    await this.state.storage.put("elections", [...this.elections.entries()]);
   }
 
   // ---- Alarm: multiplexes waiting-room start countdown and in-game idle expiry ----
@@ -151,7 +191,7 @@ export class GameRoom {
   // ---- Waiting-room election state machine ----
   async recomputeWaiting() {
     if (this.game) return;
-    const mem = [...this.members().values()];
+    const mem = this.uniqueMembers();
     const M = mem.length;
     const players = mem.filter(m => m.election === "player");
     const P = players.length;
@@ -180,7 +220,7 @@ export class GameRoom {
   }
 
   async tryStart() {
-    const players = [...this.members().values()].filter(m => m.election === "player");
+    const players = this.uniqueMembers().filter(m => m.election === "player");
     this.startAt = null; this.startKind = null;
     await this.state.storage.delete("startAt");
     await this.state.storage.delete("startKind");
@@ -207,16 +247,14 @@ export class GameRoom {
   async reset() {
     this.game = null;
     this.endVotes.clear();
+    this.elections.clear();
     this.startAt = null; this.startKind = null;
     await this.state.storage.delete("game");
     await this.state.storage.delete("endVotes");
+    await this.state.storage.delete("elections");
     await this.state.storage.delete("startAt");
     await this.state.storage.delete("startKind");
     await this.state.storage.deleteAlarm();
-    for (const ws of this.state.getWebSockets()) {
-      const a = ws.deserializeAttachment() as Attach | null;
-      if (a && a.pid) ws.serializeAttachment({ ...a, election: "none", anyway: false });
-    }
     this.broadcastLobby();
   }
 
@@ -257,8 +295,10 @@ export class GameRoom {
   broadcastState() { for (const ws of this.state.getWebSockets()) this.pushState(ws); }
 
   sendLobby(ws: WebSocket) {
-    const me = ws.deserializeAttachment() as Attach | null;
-    const mem = [...this.members().values()];
+    const meRaw = ws.deserializeAttachment() as Attach | null;
+    const mem = this.uniqueMembers();
+    // Merge this user's election across their own tabs for a consistent view.
+    const me = meRaw?.pid ? mem.find(m => m.pid === meRaw.pid) : undefined;
     const M = mem.length;
     const players = mem.filter(m => m.election === "player");
     const E = mem.filter(m => m.election !== "none").length;
