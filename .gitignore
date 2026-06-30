@@ -32,6 +32,9 @@ yarn-error.log*
 # partykit
 .partykit/
 
+# wrangler / cloudflare
+.wrangler/
+
 # vercel
 .vercel
 
