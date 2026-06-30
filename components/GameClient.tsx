@@ -8,7 +8,9 @@ import { sort, evaluateHand } from "@/lib/game/engine";
 import { Spinner } from "@/components/Spinner";
 
 export default function GameClient({ pid, name }: { pid: string; name: string }) {
-  const g = useGame("main", pid, name);
+  // Dev and prod never share a room, so local play can never join a live prod game.
+  const room = process.env.NODE_ENV === "production" ? "main" : "dev";
+  const g = useGame(room, pid, name);
   const [selected, setSelected] = useState<Set<number>>(new Set());
 
   const toggle = (id: number) => {
@@ -81,7 +83,6 @@ export default function GameClient({ pid, name }: { pid: string; name: string })
             g.pass(); setSelected(new Set());
           }}>Pass</button>
           {snap.gameOver && <button onClick={g.restart}>Restart</button>}
-          <span style={{ marginLeft: 12, opacity: 0.85 }}>Turn: {snap.players.find(p => p.pid === snap.currentPlayer)?.name}</span>
           <button
             onClick={g.endVote}
             style={{ marginLeft: "auto", background: "#d40000", color: "#fff" }}
@@ -89,6 +90,39 @@ export default function GameClient({ pid, name }: { pid: string; name: string })
           >
             End Game {g.endVotes.votes > 0 ? `(${g.endVotes.votes}/${g.endVotes.total})` : ""}
           </button>
+        </div>
+
+        <div style={{ marginTop: 28, display: "flex", flexWrap: "wrap", gap: 16, justifyContent: "center" }}>
+          {snap.players.map((p, i) => {
+            const isTurn = p.pid === snap.currentPlayer;
+            const isMe = p.pid === pid;
+            return (
+              <div
+                key={p.pid}
+                style={{
+                  position: "relative",
+                  minWidth: 132,
+                  padding: "14px 18px",
+                  borderRadius: 14,
+                  textAlign: "center",
+                  background: isTurn ? "#F7ECD3" : "#5C1A1A99",
+                  color: isTurn ? "#5C1A1A" : "#F7ECD3",
+                  border: `3px solid ${isTurn ? "#C0392B" : "#E9A6A655"}`,
+                  boxShadow: isTurn ? "0 0 18px #C0392B" : "none",
+                  transition: "all 0.25s"
+                }}
+              >
+                <div style={{ fontSize: 12, opacity: 0.7 }}>#{i + 1}{i < snap.players.length - 1 ? " →" : " ↺"}</div>
+                <div style={{ fontWeight: 800, fontSize: 16 }}>
+                  {isTurn ? "▸ " : ""}{p.name}{isMe ? " (you)" : ""}
+                </div>
+                <div style={{ marginTop: 6, fontSize: 22, fontWeight: 800 }}>
+                  🂠 {p.cardsLeft}
+                </div>
+                <div style={{ fontSize: 11, opacity: 0.7 }}>{p.cardsLeft === 1 ? "card" : "cards"} left</div>
+              </div>
+            );
+          })}
         </div>
       </div>
     </LayoutGroup>

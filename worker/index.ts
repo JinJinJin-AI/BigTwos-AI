@@ -6,11 +6,13 @@ export interface Env {
   GAME: DurableObjectNamespace;
 }
 
-// Worker entrypoint: route every connection to a single shared room DO.
+// Worker entrypoint: route each connection to its room's Durable Object.
+// Room comes from ?room= (defaults to "main"), so dev and prod never share a game.
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     if (req.headers.get("Upgrade") === "websocket") {
-      const id = env.GAME.idFromName("main");
+      const room = new URL(req.url).searchParams.get("room") || "main";
+      const id = env.GAME.idFromName(room);
       return env.GAME.get(id).fetch(req);
     }
     return new Response("BigTwos realtime OK", { status: 200, headers: { "access-control-allow-origin": "*" } });

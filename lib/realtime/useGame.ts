@@ -15,7 +15,7 @@ export function useGame(room: string, pid: string, name: string) {
   useEffect(() => {
     const host = process.env.NEXT_PUBLIC_PARTYKIT_HOST || "127.0.0.1:1999";
     const proto = host.startsWith("localhost") || host.startsWith("127.") ? "ws" : "wss";
-    const sock = new WebSocket(`${proto}://${host}`);
+    const sock = new WebSocket(`${proto}://${host}/?room=${encodeURIComponent(room)}`);
     sockRef.current = sock;
     sock.addEventListener("open", () => sock.send(JSON.stringify({ type: "join", pid, name })));
     sock.addEventListener("message", e => {
