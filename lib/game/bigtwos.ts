@@ -1,4 +1,4 @@
-import { checkValidHand, evaluateHand } from "./engine";
+import { evaluateHand } from "./engine";
 import { CardData, fromId, toId } from "./constants";
 
 export interface PublicPlayerState {
@@ -123,7 +123,7 @@ export class BigTwos {
       this.numPasses = 0;
       ids.forEach(c => this.players.cards.delete(c));
       this.boardHand = new Set(ids);
-      const [name, score, suit] = checkValidHand(this.cards(ids));
+      const [name, score, suit] = evaluateHand(this.cards(ids));
       this.boardName = name;
       this.boardScore = score;
       this.boardHigh = (suit as number) ?? -1;

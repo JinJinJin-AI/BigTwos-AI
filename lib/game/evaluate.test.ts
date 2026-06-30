@@ -17,3 +17,14 @@ ok("four of a kind (4 cards) unaffected", evaluateHand([C(1,"spades"),C(1,"heart
 
 // checkValidHand itself is untouched (still has the legacy behavior)
 ok("checkValidHand verbatim (still calls straight)", checkValidHand([C(6,"spades"),C(6,"hearts"),C(7,"clubs"),C(7,"diamonds"),C(8,"spades")])[0] === "straight");
+
+// double suit comparison must use the HIGHEST suit, order-independent
+const pairSpadeDiamond = evaluateHand([C(6,"spades"),C(6,"diamonds")])[2];
+const pairDiamondSpade = evaluateHand([C(6,"diamonds"),C(6,"spades")])[2];
+ok("6d6s pair suit = spades(3)", pairSpadeDiamond === 3);
+ok("pair suit order-independent", pairSpadeDiamond === pairDiamondSpade);
+const pairHeartClub = evaluateHand([C(6,"hearts"),C(6,"clubs")])[2];
+ok("6h6c pair suit = hearts(2)", pairHeartClub === 2);
+ok("6d6s (3) beats 6h6c (2)", (pairSpadeDiamond as number) > (pairHeartClub as number));
+// single still uses its own suit
+ok("single 6c suit = clubs(1)", evaluateHand([C(6,"clubs")])[2] === 1);

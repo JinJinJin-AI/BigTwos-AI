@@ -174,6 +174,14 @@ export function evaluateHand(
     const valid = name === "full house" ? isFullHouse : fiveDistinct;
     if (!valid) return ["invalid", 0, res[2], res[3], res[4]];
   }
+  // For singles/doubles/triples/four-of-a-kind the comparison suit is the HIGHEST
+  // suit among the cards. checkValidHand's `if (S) highSuit = highCardSuit` makes it
+  // click-order dependent for these (S defaults true), so override with the max suit.
+  if (cards.length < 5 && name && name !== "invalid") {
+    const sv = (s: string) => (s === "diamonds" ? 0 : s === "clubs" ? 1 : s === "hearts" ? 2 : 3);
+    const maxSuit = Math.max(...cards.map(c => sv(c.suit)));
+    return [res[0], res[1], maxSuit, res[3], res[4]];
+  }
   return res;
 }
 
