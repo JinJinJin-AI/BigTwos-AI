@@ -77,9 +77,16 @@ export class GameRoom {
       this.broadcastState();
     } else if (msg.type === "endVote" && this.game) {
       const a = ws.deserializeAttachment() as Attach;
-      if (a?.pid) this.endVotes.add(a.pid);
+      // Only count votes from actual players in the game, toggle so it can be undone.
+      if (a?.pid && this.game.playerCards(a.pid) !== null) {
+        if (this.endVotes.has(a.pid)) this.endVotes.delete(a.pid);
+        else this.endVotes.add(a.pid);
+      }
       await this.state.storage.put("endVotes", [...this.endVotes]);
-      if (this.endVotes.size * 2 > this.members().size) await this.reset();
+      // Threshold is a majority of the GAME's players (fixed), not live connections,
+      // so a disconnect can't lower the bar. 2 players => need both.
+      const totalPlayers = this.game.snapshot().players.length;
+      if (this.endVotes.size * 2 > totalPlayers) await this.reset();
       else this.broadcastState();
     } else if (msg.type === "restart") {
       await this.reset();
@@ -125,7 +132,7 @@ export class GameRoom {
       snapshot: snap,
       hand: a?.pid ? this.game.playerCards(a.pid) : [],
       endVotes: this.endVotes.size,
-      totalPlayers: this.members().size
+      totalPlayers: snap.players.length
     }));
   }
   broadcastState() { for (const ws of this.state.getWebSockets()) this.pushState(ws); }
