@@ -9,6 +9,8 @@ export function useGame(room: string, pid: string, name: string) {
   const [snapshot, setSnapshot] = useState<GameSnapshot | null>(null);
   const [hand, setHand] = useState<number[]>([]);
   const [endVotes, setEndVotes] = useState<{ votes: number; total: number }>({ votes: 0, total: 0 });
+  const [observers, setObservers] = useState<{ name: string }[]>([]);
+  const [isObserver, setIsObserver] = useState(false);
   const [youReady, setYouReady] = useState(false);
   const [connected, setConnected] = useState(false);
   const sockRef = useRef<WebSocket | null>(null);
@@ -39,6 +41,8 @@ export function useGame(room: string, pid: string, name: string) {
           setSnapshot(m.snapshot);
           setHand(m.hand || []);
           setEndVotes({ votes: m.endVotes || 0, total: m.totalPlayers || 0 });
+          setObservers(m.observers || []);
+          setIsObserver(!!m.youAreObserver);
         }
       });
       sock.addEventListener("close", () => {
@@ -64,6 +68,8 @@ export function useGame(room: string, pid: string, name: string) {
     snapshot,
     hand,
     endVotes,
+    observers,
+    isObserver,
     youReady,
     connected,
     ready: () => send({ type: "ready" }),

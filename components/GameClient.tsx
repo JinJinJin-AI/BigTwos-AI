@@ -66,7 +66,7 @@ export default function GameClient({ pid, name }: { pid: string; name: string })
             Reconnecting…
           </div>
         )}
-        <h2>{snap.gameOver ? `🏆 ${snap.winner === pid ? "You win!" : "Game over"}` : myTurn ? "Your turn" : "Waiting…"}</h2>
+        <h2>{snap.gameOver ? `🏆 ${snap.winner === pid ? "You win!" : "Game over"}` : g.isObserver ? "👁 Observing — you joined after the game started" : myTurn ? "Your turn" : "Waiting…"}</h2>
         <p style={{ minHeight: 20, opacity: 0.8 }}>{name_ && name_ !== "invalid" ? `Selected: ${name_}` : "\u00a0"}</p>
         <div style={{ display: "flex", gap: 6, minHeight: 140, justifyContent: "center", alignItems: "center", background: "#0002", borderRadius: 12, margin: "12px 0" }}>
           {board.length ? board.map(c => <PlayingCard key={toId(c)} layoutId={`c-${toId(c)}`} card={c} />) : <span>No cards on the board</span>}
@@ -129,6 +129,27 @@ export default function GameClient({ pid, name }: { pid: string; name: string })
             );
           })}
         </div>
+
+        {g.observers.length > 0 && (
+          <div style={{ marginTop: 18, display: "flex", flexWrap: "wrap", gap: 10, justifyContent: "center", alignItems: "center" }}>
+            <span style={{ fontSize: 12, opacity: 0.6, letterSpacing: 1, textTransform: "uppercase" }}>Spectators</span>
+            {g.observers.map((o, i) => (
+              <div
+                key={i}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: 999,
+                  background: "#00000033",
+                  border: "1px solid #E9A6A655",
+                  fontSize: 13,
+                  opacity: 0.85
+                }}
+              >
+                👁 {o.name}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </LayoutGroup>
   );

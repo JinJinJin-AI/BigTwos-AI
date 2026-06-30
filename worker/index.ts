@@ -58,7 +58,8 @@ export class GameRoom {
 
     if (msg.type === "join") {
       ws.serializeAttachment({ pid: msg.pid, name: msg.name, ready: false } as Attach);
-      if (this.game) this.pushState(ws); else this.broadcastLobby();
+      if (this.game) this.broadcastState(); // refresh everyone so observers list updates
+      else this.broadcastLobby();
     } else if (msg.type === "ready") {
       const a = ws.deserializeAttachment() as Attach;
       ws.serializeAttachment({ ...a, ready: !a.ready });
@@ -95,7 +96,8 @@ export class GameRoom {
 
   async webSocketClose(ws: WebSocket) {
     try { ws.close(); } catch { /* already closing */ }
-    if (!this.game) this.broadcastLobby();
+    if (this.game) this.broadcastState(); // refresh observer/connection list
+    else this.broadcastLobby();
   }
 
   async start() {
@@ -127,12 +129,24 @@ export class GameRoom {
     if (!this.game) { this.sendLobby(ws); return; }
     const a = ws.deserializeAttachment() as Attach | null;
     const snap: GameSnapshot = this.game.snapshot();
+    // Observers = connected members who aren't seated players in this game.
+    const playerPids = new Set(snap.players.map(p => p.pid));
+    const seen = new Set<string>();
+    const observers: { name: string }[] = [];
+    for (const m of this.members().values()) {
+      if (!playerPids.has(m.pid) && !seen.has(m.pid)) {
+        seen.add(m.pid);
+        observers.push({ name: m.name });
+      }
+    }
     ws.send(JSON.stringify({
       type: "state",
       snapshot: snap,
-      hand: a?.pid ? this.game.playerCards(a.pid) : [],
+      hand: a?.pid ? (this.game.playerCards(a.pid) || []) : [],
       endVotes: this.endVotes.size,
-      totalPlayers: snap.players.length
+      totalPlayers: snap.players.length,
+      observers,
+      youAreObserver: a?.pid ? !playerPids.has(a.pid) : true
     }));
   }
   broadcastState() { for (const ws of this.state.getWebSockets()) this.pushState(ws); }
