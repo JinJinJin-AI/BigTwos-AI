@@ -62,19 +62,52 @@ export default function GameClient({ pid, name }: { pid: string; name: string })
   const playable = validType && beatsBoard;
 
   if (!snap) {
+    const isPlayer = g.youElection === "player";
+    const isObs = g.youElection === "observer";
     return (
       <>
         <ChatOverlay chats={g.chats} />
         <ChatBar onSend={g.sendChat} />
-        <div style={{ minHeight: "100vh", backgroundImage: "url(/images/title.png)", backgroundSize: "cover", backgroundPosition: "center", display: "flex", flexDirection: "column", justifyContent: "flex-end", alignItems: "center", paddingBottom: "32vh", color: "#F7ECD3" }}>
-          <div style={{ background: "#5C1A1Acc", border: "3px solid #E9A6A6", borderRadius: 14, padding: "21px 36px", textAlign: "center", minWidth: 338, fontSize: "1.3em" }}>
-            <h2 style={{ marginBottom: 8 }}>Waiting Room</h2>
-            {g.lobby.length === 0 ? (
+        <div style={{ minHeight: "100vh", backgroundImage: "url(/images/title.png)", backgroundSize: "cover", backgroundPosition: "center", display: "flex", flexDirection: "column", justifyContent: "flex-end", alignItems: "center", paddingBottom: "20vh", color: "#F7ECD3" }}>
+          <div style={{ background: "#5C1A1Acc", border: "3px solid #E9A6A6", borderRadius: 14, padding: "20px 32px", textAlign: "center", minWidth: 360, fontSize: "1.1em" }}>
+            <h2 style={{ marginBottom: 10 }}>Waiting Room</h2>
+            {g.lobbyPlayers.length === 0 ? (
               <Spinner label="Connecting…" />
             ) : (
-              <ul style={{ listStyle: "none", marginBottom: 12 }}>{g.lobby.map((p, i) => <li key={i}>{p.name} {p.ready ? "✅" : "…"}</li>)}</ul>
+              <ul style={{ listStyle: "none", marginBottom: 12, display: "grid", gap: 4 }}>
+                {g.lobbyPlayers.map((p, i) => (
+                  <li key={i}>
+                    {p.name} — {p.election === "player" ? "✋ Player" : p.election === "observer" ? "👁 Spectator" : "…undecided"}
+                    {p.election === "player" && p.anyway ? " ⚡" : ""}
+                  </li>
+                ))}
+              </ul>
             )}
-            <button onClick={g.ready} style={{ background: "#F7ECD3", color: "#5C1A1A", border: "3px solid #E9A6A6", letterSpacing: 2, boxShadow: "0 5px 0 #C0392B", padding: "10px 21px", fontSize: "1em" }}>{g.youReady ? "Undo" : "I'm ready"}</button>
+
+            <div style={{ display: "flex", gap: 8, justifyContent: "center", marginBottom: 10 }}>
+              <button onClick={() => g.elect(isPlayer ? "none" : "player")}
+                style={{ background: isPlayer ? "#C0392B" : "#F7ECD3", color: isPlayer ? "#fff" : "#5C1A1A", border: "3px solid #E9A6A6" }}>
+                {isPlayer ? "✓ Playing" : "Play"}
+              </button>
+              <button onClick={() => g.elect(isObs ? "none" : "observer")}
+                style={{ background: isObs ? "#C0392B" : "#F7ECD3", color: isObs ? "#fff" : "#5C1A1A", border: "3px solid #E9A6A6" }}>
+                {isObs ? "✓ Spectating" : "Spectate"}
+              </button>
+            </div>
+
+            {g.countdown && (
+              <p style={{ fontWeight: 800, fontSize: "1.2em" }}>
+                Starting in {g.countdown.secondsLeft}s…
+                <span style={{ opacity: 0.7, fontSize: "0.7em" }}> ({g.countdown.kind === "auto" ? "everyone chose" : "begin anyway"})</span>
+              </p>
+            )}
+
+            {g.beginAnyway.eligible && isPlayer && !g.countdown && (
+              <button onClick={g.toggleAnyway}
+                style={{ background: g.youAnyway ? "#C0392B" : "#F7ECD3", color: g.youAnyway ? "#fff" : "#5C1A1A", border: "3px solid #E9A6A6" }}>
+                {g.youAnyway ? "Cancel" : "Begin anyway"} ({g.beginAnyway.votes}/{g.beginAnyway.need})
+              </button>
+            )}
           </div>
         </div>
       </>
@@ -92,6 +125,17 @@ export default function GameClient({ pid, name }: { pid: string; name: string })
         {!g.connected && (
           <div style={{ position: "fixed", top: 0, left: 0, right: 0, background: "#C0392B", color: "#fff", textAlign: "center", padding: 6, zIndex: 50 }}>
             Reconnecting…
+          </div>
+        )}
+        {g.idleSeconds !== null && !snap.gameOver && (
+          <div style={{ position: "fixed", inset: 0, background: "#000000aa", zIndex: 80, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ background: "#5C1A1A", border: "3px solid #E9A6A6", borderRadius: 16, padding: "28px 36px", textAlign: "center", color: "#F7ECD3", maxWidth: 380 }}>
+              <h2 style={{ marginBottom: 8 }}>Still there?</h2>
+              <p style={{ marginBottom: 14 }}>This game will end from inactivity in <b style={{ fontSize: "1.4em", color: "#ffd166" }}>{g.idleSeconds}</b>s.</p>
+              <button onClick={g.stillHere} style={{ background: "#F7ECD3", color: "#5C1A1A", border: "3px solid #E9A6A6", fontSize: "1.1em", padding: "10px 24px" }}>
+                I&apos;m still here
+              </button>
+            </div>
           </div>
         )}
         <h2>{snap.gameOver ? `🏆 ${snap.winner === pid ? "You win!" : "Game over"}` : g.isObserver ? "👁 Observing — you joined after the game started" : myTurn ? "Your turn" : "Waiting…"}</h2>
@@ -116,13 +160,15 @@ export default function GameClient({ pid, name }: { pid: string; name: string })
             g.pass(); setSelected(new Set());
           }}>Pass</button>
           {snap.gameOver && <button onClick={g.restart}>Restart</button>}
-          <button
-            onClick={g.endVote}
-            style={{ marginLeft: "auto", background: "#d40000", color: "#fff" }}
-            title="Vote to end the game and return to the waiting room"
-          >
-            End Game {g.endVotes.votes > 0 ? `(${g.endVotes.votes}/${g.endVotes.total})` : ""}
-          </button>
+          {!g.isObserver && (
+            <button
+              onClick={g.endVote}
+              style={{ marginLeft: "auto", background: "#d40000", color: "#fff" }}
+              title="Vote to end the game and return to the waiting room"
+            >
+              End Game {g.endVotes.votes > 0 ? `(${g.endVotes.votes}/${g.endVotes.total})` : ""}
+            </button>
+          )}
         </div>
 
         <div style={{ marginTop: 28, display: "flex", flexWrap: "wrap", gap: 16, justifyContent: "center" }}>

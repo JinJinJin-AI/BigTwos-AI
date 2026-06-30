@@ -1,10 +1,16 @@
 import { BigTwos, GameSnapshot, GameState } from "../lib/game/bigtwos";
 
-interface Attach { pid: string; name: string; ready: boolean; }
+type Election = "none" | "observer" | "player";
+interface Attach { pid: string; name: string; election: Election; anyway: boolean; }
 
 export interface Env {
   GAME: DurableObjectNamespace;
 }
+
+const IDLE_WARN = 8 * 60 * 1000;   // show "still here?" warning at 8 min idle
+const IDLE_EXPIRE = 10 * 60 * 1000; // expire game at 10 min idle (120s after warning)
+const AUTO_MS = 5000;   // all-elected start countdown
+const ANYWAY_MS = 10000; // begin-anyway start countdown
 
 // Worker entrypoint: route each connection to its room's Durable Object.
 // Room comes from ?room= (defaults to "main"), so dev and prod never share a game.
@@ -22,14 +28,18 @@ export default {
 export class GameRoom {
   game: BigTwos | null = null;
   endVotes = new Set<string>();
+  lastActivity = 0;
+  startAt: number | null = null;
+  startKind: "auto" | "anyway" | null = null;
 
   constructor(private state: DurableObjectState) {
     this.state.blockConcurrencyWhile(async () => {
       const gs = await this.state.storage.get<GameState>("game");
       this.game = gs ? BigTwos.restore(gs) : null;
-      const ev = await this.state.storage.get<string[]>("endVotes");
-      this.endVotes = new Set(ev || []);
-      // Keep hibernated sockets alive: auto-reply "pong" to "ping" without waking.
+      this.endVotes = new Set(await this.state.storage.get<string[]>("endVotes") || []);
+      this.lastActivity = await this.state.storage.get<number>("lastActivity") || 0;
+      this.startAt = (await this.state.storage.get<number>("startAt")) ?? null;
+      this.startKind = (await this.state.storage.get<"auto" | "anyway">("startKind")) ?? null;
       this.state.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
     });
   }
@@ -37,8 +47,8 @@ export class GameRoom {
   async fetch(_req: Request): Promise<Response> {
     const pair = new WebSocketPair();
     const client = pair[0], server = pair[1];
-    this.state.acceptWebSocket(server); // hibernatable
-    server.serializeAttachment({ pid: "", name: "", ready: false } as Attach);
+    this.state.acceptWebSocket(server);
+    server.serializeAttachment({ pid: "", name: "", election: "none", anyway: false } as Attach);
     return new Response(null, { status: 101, webSocket: client });
   }
 
@@ -52,48 +62,57 @@ export class GameRoom {
   }
 
   async webSocketMessage(ws: WebSocket, raw: string) {
-    if (raw === "ping") return; // normally handled by auto-response
+    if (raw === "ping") return;
     let msg: any;
     try { msg = JSON.parse(raw); } catch { return; }
 
     if (msg.type === "join") {
-      ws.serializeAttachment({ pid: msg.pid, name: msg.name, ready: false } as Attach);
-      if (this.game) this.broadcastState(); // refresh everyone so observers list updates
-      else this.broadcastLobby();
+      const prev = ws.deserializeAttachment() as Attach;
+      ws.serializeAttachment({ pid: msg.pid, name: msg.name, election: prev?.election ?? "none", anyway: prev?.anyway ?? false });
+      if (this.game) this.broadcastState();
+      else await this.recomputeWaiting();
     } else if (msg.type === "chat") {
-      // Ephemeral chat: broadcast and forget. Never stored.
       const a = ws.deserializeAttachment() as Attach;
       const text = String(msg.text ?? "").slice(0, 200).trim();
       if (a?.name && text) {
         const payload = JSON.stringify({ type: "chat", name: a.name, text });
         for (const c of this.state.getWebSockets()) { try { c.send(payload); } catch { /* noop */ } }
       }
-    } else if (msg.type === "ready") {
+    } else if (msg.type === "elect" && !this.game) {
       const a = ws.deserializeAttachment() as Attach;
-      ws.serializeAttachment({ ...a, ready: !a.ready });
-      const all = [...this.members().values()];
-      if (all.length >= 2 && all.every(x => x.ready)) await this.start();
-      else this.broadcastLobby();
+      const choice: Election = msg.choice;
+      if (choice === "none" || choice === "observer" || choice === "player") {
+        ws.serializeAttachment({ ...a, election: choice, anyway: choice === "player" ? a.anyway : false });
+        await this.recomputeWaiting();
+      }
+    } else if (msg.type === "beginAnyway" && !this.game) {
+      const a = ws.deserializeAttachment() as Attach;
+      if (a.election === "player") {
+        ws.serializeAttachment({ ...a, anyway: !a.anyway });
+        await this.recomputeWaiting();
+      }
+    } else if (msg.type === "stillHere" && this.game) {
+      await this.bumpActivity();
     } else if (msg.type === "move" && this.game) {
       const a = ws.deserializeAttachment() as Attach;
       if (a?.pid) this.game.makeMove(a.pid, msg.cards, false);
       await this.persist();
+      await this.bumpActivity();
       this.broadcastState();
     } else if (msg.type === "pass" && this.game) {
       const a = ws.deserializeAttachment() as Attach;
       if (a?.pid) this.game.makeMove(a.pid, [], true);
       await this.persist();
+      await this.bumpActivity();
       this.broadcastState();
     } else if (msg.type === "endVote" && this.game) {
       const a = ws.deserializeAttachment() as Attach;
-      // Only count votes from actual players in the game, toggle so it can be undone.
+      // Only players in the game can vote to end; toggle so it can be undone.
       if (a?.pid && this.game.playerCards(a.pid) !== null) {
         if (this.endVotes.has(a.pid)) this.endVotes.delete(a.pid);
         else this.endVotes.add(a.pid);
       }
       await this.state.storage.put("endVotes", [...this.endVotes]);
-      // Threshold is a majority of the GAME's players (fixed), not live connections,
-      // so a disconnect can't lower the bar. 2 players => need both.
       const totalPlayers = this.game.snapshot().players.length;
       if (this.endVotes.size * 2 > totalPlayers) await this.reset();
       else this.broadcastState();
@@ -104,27 +123,99 @@ export class GameRoom {
 
   async webSocketClose(ws: WebSocket) {
     try { ws.close(); } catch { /* already closing */ }
-    if (this.game) this.broadcastState(); // refresh observer/connection list
-    else this.broadcastLobby();
+    if (this.game) this.broadcastState();
+    else await this.recomputeWaiting();
   }
 
-  async start() {
+  // ---- Alarm: multiplexes waiting-room start countdown and in-game idle expiry ----
+  async alarm() {
+    const now = Date.now();
+    if (this.game) {
+      const idle = now - this.lastActivity;
+      if (idle >= IDLE_EXPIRE) { await this.reset(); return; }
+      const warnAt = this.lastActivity + IDLE_WARN;
+      if (now >= warnAt) {
+        const secondsLeft = Math.max(0, Math.ceil((this.lastActivity + IDLE_EXPIRE - now) / 1000));
+        this.broadcast({ type: "idle", secondsLeft });
+        await this.state.storage.setAlarm(this.lastActivity + IDLE_EXPIRE);
+      } else {
+        await this.state.storage.setAlarm(warnAt);
+      }
+    } else if (this.startAt && now >= this.startAt - 50) {
+      await this.tryStart();
+    } else if (this.startAt) {
+      await this.state.storage.setAlarm(this.startAt);
+    }
+  }
+
+  // ---- Waiting-room election state machine ----
+  async recomputeWaiting() {
+    if (this.game) return;
+    const mem = [...this.members().values()];
+    const M = mem.length;
+    const players = mem.filter(m => m.election === "player");
+    const P = players.length;
+    const E = mem.filter(m => m.election !== "none").length;
+    const allAnyway = P > 0 && players.every(m => m.anyway);
+
+    let kind: "auto" | "anyway" | null = null;
+    if (P >= 2 && E === M && M >= 2) kind = "auto";            // everyone elected
+    else if (P >= 2 && M > 2 && E * 2 > M && allAnyway) kind = "anyway"; // majority + forced
+
+    if (!kind) {
+      if (this.startAt !== null) {
+        this.startAt = null; this.startKind = null;
+        await this.state.storage.delete("startAt");
+        await this.state.storage.delete("startKind");
+        await this.state.storage.deleteAlarm();
+      }
+    } else if (this.startKind !== kind) {
+      this.startKind = kind;
+      this.startAt = Date.now() + (kind === "auto" ? AUTO_MS : ANYWAY_MS);
+      await this.state.storage.put("startKind", kind);
+      await this.state.storage.put("startAt", this.startAt);
+      await this.state.storage.setAlarm(this.startAt);
+    }
+    this.broadcastLobby();
+  }
+
+  async tryStart() {
+    const players = [...this.members().values()].filter(m => m.election === "player");
+    this.startAt = null; this.startKind = null;
+    await this.state.storage.delete("startAt");
+    await this.state.storage.delete("startKind");
+    if (players.length < 2) { this.broadcastLobby(); return; }
     this.endVotes.clear();
     await this.state.storage.delete("endVotes");
-    const seats = [...this.members().values()].map(m => ({ pid: m.pid, name: m.name }));
-    this.game = new BigTwos(seats);
+    this.game = new BigTwos(players.map(p => ({ pid: p.pid, name: p.name })));
     await this.persist();
+    this.lastActivity = Date.now();
+    await this.state.storage.put("lastActivity", this.lastActivity);
+    await this.state.storage.setAlarm(this.lastActivity + IDLE_WARN);
     this.broadcastState();
   }
+
+  async bumpActivity() {
+    this.lastActivity = Date.now();
+    await this.state.storage.put("lastActivity", this.lastActivity);
+    await this.state.storage.setAlarm(this.lastActivity + IDLE_WARN);
+    this.broadcast({ type: "idleCleared" });
+  }
+
+  async start() { await this.tryStart(); }
 
   async reset() {
     this.game = null;
     this.endVotes.clear();
+    this.startAt = null; this.startKind = null;
     await this.state.storage.delete("game");
     await this.state.storage.delete("endVotes");
+    await this.state.storage.delete("startAt");
+    await this.state.storage.delete("startKind");
+    await this.state.storage.deleteAlarm();
     for (const ws of this.state.getWebSockets()) {
       const a = ws.deserializeAttachment() as Attach | null;
-      if (a && a.pid) ws.serializeAttachment({ ...a, ready: false });
+      if (a && a.pid) ws.serializeAttachment({ ...a, election: "none", anyway: false });
     }
     this.broadcastLobby();
   }
@@ -133,20 +224,25 @@ export class GameRoom {
     if (this.game) await this.state.storage.put("game", this.game.toState());
   }
 
+  broadcast(obj: any) {
+    const payload = JSON.stringify(obj);
+    for (const ws of this.state.getWebSockets()) { try { ws.send(payload); } catch { /* noop */ } }
+  }
+
   pushState(ws: WebSocket) {
     if (!this.game) { this.sendLobby(ws); return; }
     const a = ws.deserializeAttachment() as Attach | null;
     const snap: GameSnapshot = this.game.snapshot();
-    // Observers = connected members who aren't seated players in this game.
     const playerPids = new Set(snap.players.map(p => p.pid));
     const seen = new Set<string>();
     const observers: { name: string }[] = [];
     for (const m of this.members().values()) {
-      if (!playerPids.has(m.pid) && !seen.has(m.pid)) {
-        seen.add(m.pid);
-        observers.push({ name: m.name });
-      }
+      if (!playerPids.has(m.pid) && !seen.has(m.pid)) { seen.add(m.pid); observers.push({ name: m.name }); }
     }
+    const now = Date.now();
+    const idleSecondsLeft = now >= this.lastActivity + IDLE_WARN
+      ? Math.max(0, Math.ceil((this.lastActivity + IDLE_EXPIRE - now) / 1000))
+      : null;
     ws.send(JSON.stringify({
       type: "state",
       snapshot: snap,
@@ -154,17 +250,27 @@ export class GameRoom {
       endVotes: this.endVotes.size,
       totalPlayers: snap.players.length,
       observers,
-      youAreObserver: a?.pid ? !playerPids.has(a.pid) : true
+      youAreObserver: a?.pid ? !playerPids.has(a.pid) : true,
+      idleSecondsLeft
     }));
   }
   broadcastState() { for (const ws of this.state.getWebSockets()) this.pushState(ws); }
 
   sendLobby(ws: WebSocket) {
     const me = ws.deserializeAttachment() as Attach | null;
+    const mem = [...this.members().values()];
+    const M = mem.length;
+    const players = mem.filter(m => m.election === "player");
+    const E = mem.filter(m => m.election !== "none").length;
+    const beginAnywayEligible = players.length >= 2 && M > 2 && E * 2 > M;
     ws.send(JSON.stringify({
       type: "lobby",
-      youReady: !!me?.ready,
-      players: [...this.members().values()].map(m => ({ name: m.name, ready: m.ready }))
+      you: { election: me?.election ?? "none", anyway: !!me?.anyway },
+      players: mem.map(m => ({ name: m.name, election: m.election, anyway: m.anyway })),
+      countdown: this.startAt
+        ? { kind: this.startKind, secondsLeft: Math.max(0, Math.ceil((this.startAt - Date.now()) / 1000)) }
+        : null,
+      beginAnyway: { eligible: beginAnywayEligible, votes: players.filter(p => p.anyway).length, need: players.length }
     }));
   }
   broadcastLobby() { for (const ws of this.state.getWebSockets()) this.sendLobby(ws); }
