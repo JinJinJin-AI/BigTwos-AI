@@ -61,6 +61,11 @@ export default function GameClient({ pid, name }: { pid: string; name: string })
   return (
     <LayoutGroup>
       <div style={{ minHeight: "100vh", padding: 20, color: "#fff" }}>
+        {!g.connected && (
+          <div style={{ position: "fixed", top: 0, left: 0, right: 0, background: "#C0392B", color: "#fff", textAlign: "center", padding: 6, zIndex: 50 }}>
+            Reconnecting…
+          </div>
+        )}
         <h2>{snap.gameOver ? `🏆 ${snap.winner === pid ? "You win!" : "Game over"}` : myTurn ? "Your turn" : "Waiting…"}</h2>
         <p style={{ minHeight: 20, opacity: 0.8 }}>{name_ && name_ !== "invalid" ? `Selected: ${name_}` : "\u00a0"}</p>
         <div style={{ display: "flex", gap: 6, minHeight: 140, justifyContent: "center", alignItems: "center", background: "#0002", borderRadius: 12, margin: "12px 0" }}>

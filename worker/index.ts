@@ -1,6 +1,6 @@
-import { BigTwos, GameSnapshot } from "../lib/game/bigtwos";
+import { BigTwos, GameSnapshot, GameState } from "../lib/game/bigtwos";
 
-interface Member { pid: string; name: string; ready: boolean; }
+interface Attach { pid: string; name: string; ready: boolean; }
 
 export interface Env {
   GAME: DurableObjectNamespace;
@@ -21,70 +21,122 @@ export default {
 
 export class GameRoom {
   game: BigTwos | null = null;
-  members = new Map<WebSocket, Member>();
   endVotes = new Set<string>();
-  constructor(private state: DurableObjectState) {}
+
+  constructor(private state: DurableObjectState) {
+    this.state.blockConcurrencyWhile(async () => {
+      const gs = await this.state.storage.get<GameState>("game");
+      this.game = gs ? BigTwos.restore(gs) : null;
+      const ev = await this.state.storage.get<string[]>("endVotes");
+      this.endVotes = new Set(ev || []);
+      // Keep hibernated sockets alive: auto-reply "pong" to "ping" without waking.
+      this.state.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
+    });
+  }
 
   async fetch(_req: Request): Promise<Response> {
     const pair = new WebSocketPair();
     const client = pair[0], server = pair[1];
-    server.accept();
-    server.addEventListener("message", e => this.onMessage(server, String(e.data)));
-    server.addEventListener("close", () => this.onClose(server));
-    this.sendLobby(server);
+    this.state.acceptWebSocket(server); // hibernatable
+    server.serializeAttachment({ pid: "", name: "", ready: false } as Attach);
     return new Response(null, { status: 101, webSocket: client });
   }
 
-  onClose(ws: WebSocket) {
-    const m = this.members.get(ws);
-    if (m) this.endVotes.delete(m.pid);
-    this.members.delete(ws);
-    if (!this.game) this.broadcastLobby();
+  members(): Map<WebSocket, Attach> {
+    const m = new Map<WebSocket, Attach>();
+    for (const ws of this.state.getWebSockets()) {
+      const a = ws.deserializeAttachment() as Attach | null;
+      if (a && a.pid) m.set(ws, a);
+    }
+    return m;
   }
 
-  onMessage(ws: WebSocket, raw: string) {
+  async webSocketMessage(ws: WebSocket, raw: string) {
+    if (raw === "ping") return; // normally handled by auto-response
     let msg: any;
     try { msg = JSON.parse(raw); } catch { return; }
+
     if (msg.type === "join") {
-      this.members.set(ws, { pid: msg.pid, name: msg.name, ready: false });
+      ws.serializeAttachment({ pid: msg.pid, name: msg.name, ready: false } as Attach);
       if (this.game) this.pushState(ws); else this.broadcastLobby();
     } else if (msg.type === "ready") {
-      const m = this.members.get(ws); if (m) m.ready = !m.ready;
-      const all = [...this.members.values()];
-      if (all.length >= 2 && all.every(x => x.ready)) this.start(); else this.broadcastLobby();
+      const a = ws.deserializeAttachment() as Attach;
+      ws.serializeAttachment({ ...a, ready: !a.ready });
+      const all = [...this.members().values()];
+      if (all.length >= 2 && all.every(x => x.ready)) await this.start();
+      else this.broadcastLobby();
     } else if (msg.type === "move" && this.game) {
-      const m = this.members.get(ws); if (m) this.game.makeMove(m.pid, msg.cards, false); this.broadcastState();
+      const a = ws.deserializeAttachment() as Attach;
+      if (a?.pid) this.game.makeMove(a.pid, msg.cards, false);
+      await this.persist();
+      this.broadcastState();
     } else if (msg.type === "pass" && this.game) {
-      const m = this.members.get(ws); if (m) this.game.makeMove(m.pid, [], true); this.broadcastState();
+      const a = ws.deserializeAttachment() as Attach;
+      if (a?.pid) this.game.makeMove(a.pid, [], true);
+      await this.persist();
+      this.broadcastState();
     } else if (msg.type === "endVote" && this.game) {
-      const m = this.members.get(ws); if (m) this.endVotes.add(m.pid);
-      if (this.endVotes.size * 2 > this.members.size) this.reset(); else this.broadcastState();
+      const a = ws.deserializeAttachment() as Attach;
+      if (a?.pid) this.endVotes.add(a.pid);
+      await this.state.storage.put("endVotes", [...this.endVotes]);
+      if (this.endVotes.size * 2 > this.members().size) await this.reset();
+      else this.broadcastState();
     } else if (msg.type === "restart") {
-      this.reset();
+      await this.reset();
     }
   }
 
-  reset() {
-    this.game = null; this.endVotes.clear();
-    for (const m of this.members.values()) m.ready = false;
-    this.broadcastLobby();
+  async webSocketClose(ws: WebSocket) {
+    try { ws.close(); } catch { /* already closing */ }
+    if (!this.game) this.broadcastLobby();
   }
-  start() {
+
+  async start() {
     this.endVotes.clear();
-    this.game = new BigTwos([...this.members.values()].map(m => ({ pid: m.pid, name: m.name })));
+    await this.state.storage.delete("endVotes");
+    const seats = [...this.members().values()].map(m => ({ pid: m.pid, name: m.name }));
+    this.game = new BigTwos(seats);
+    await this.persist();
     this.broadcastState();
   }
-  conns() { return [...this.members.keys()]; }
-  sendLobby(ws: WebSocket) {
-    const me = this.members.get(ws);
-    ws.send(JSON.stringify({ type: "lobby", youReady: !!me?.ready, players: [...this.members.values()].map(m => ({ name: m.name, ready: m.ready })) }));
+
+  async reset() {
+    this.game = null;
+    this.endVotes.clear();
+    await this.state.storage.delete("game");
+    await this.state.storage.delete("endVotes");
+    for (const ws of this.state.getWebSockets()) {
+      const a = ws.deserializeAttachment() as Attach | null;
+      if (a && a.pid) ws.serializeAttachment({ ...a, ready: false });
+    }
+    this.broadcastLobby();
   }
-  broadcastLobby() { for (const c of this.conns()) this.sendLobby(c); }
+
+  async persist() {
+    if (this.game) await this.state.storage.put("game", this.game.toState());
+  }
+
   pushState(ws: WebSocket) {
-    if (!this.game) return;
-    const m = this.members.get(ws);
+    if (!this.game) { this.sendLobby(ws); return; }
+    const a = ws.deserializeAttachment() as Attach | null;
     const snap: GameSnapshot = this.game.snapshot();
-    ws.send(JSON.stringify({ type: "state", snapshot: snap, hand: m ? this.game.playerCards(m.pid) : [], endVotes: this.endVotes.size, totalPlayers: this.members.size }));
+    ws.send(JSON.stringify({
+      type: "state",
+      snapshot: snap,
+      hand: a?.pid ? this.game.playerCards(a.pid) : [],
+      endVotes: this.endVotes.size,
+      totalPlayers: this.members().size
+    }));
   }
-  broadcastState() { for (const c of this.conns()) this.pushState(c); }
+  broadcastState() { for (const ws of this.state.getWebSockets()) this.pushState(ws); }
+
+  sendLobby(ws: WebSocket) {
+    const me = ws.deserializeAttachment() as Attach | null;
+    ws.send(JSON.stringify({
+      type: "lobby",
+      youReady: !!me?.ready,
+      players: [...this.members().values()].map(m => ({ name: m.name, ready: m.ready }))
+    }));
+  }
+  broadcastLobby() { for (const ws of this.state.getWebSockets()) this.sendLobby(ws); }
 }

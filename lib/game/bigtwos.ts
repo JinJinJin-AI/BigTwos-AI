@@ -17,6 +17,16 @@ export interface GameSnapshot {
   winner: string | null;
 }
 
+export interface GameState {
+  seats: { pid: string; name: string; cards: number[] }[];
+  board: number[];
+  boardName: string | undefined;
+  boardScore: number;
+  boardHigh: number;
+  numPasses: number;
+  firstMoveMade: boolean;
+}
+
 class Seat {
   pid: string;
   name: string;
@@ -160,6 +170,49 @@ export class BigTwos {
       gameOver: this.gameOver(),
       winner: this.gameOver() ? this.players.pid : null
     };
+  }
+
+  /** Serialize full game state (ordered from current player) for DO persistence. */
+  toState(): GameState {
+    const seats: { pid: string; name: string; cards: number[] }[] = [];
+    let p = this.players;
+    for (let i = 0; i < this.size; i++) {
+      seats.push({ pid: p.pid, name: p.name, cards: [...p.cards] });
+      p = p.next!;
+    }
+    return {
+      seats,
+      board: [...this.boardHand],
+      boardName: this.boardName,
+      boardScore: this.boardScore,
+      boardHigh: this.boardHigh,
+      numPasses: this.numPasses,
+      firstMoveMade: this.firstMoveMade
+    };
+  }
+
+  /** Rebuild a BigTwos from a persisted state (no re-deal). */
+  static restore(s: GameState): BigTwos {
+    const g: BigTwos = Object.create(BigTwos.prototype);
+    g.size = s.seats.length;
+    let head = new Seat(s.seats[s.seats.length - 1].pid, s.seats[s.seats.length - 1].name);
+    head.cards = new Set(s.seats[s.seats.length - 1].cards);
+    const back = head;
+    for (let i = s.seats.length - 2; i >= 0; i--) {
+      const seat = new Seat(s.seats[i].pid, s.seats[i].name);
+      seat.cards = new Set(s.seats[i].cards);
+      seat.next = head;
+      head = seat;
+    }
+    back.next = head;
+    g.players = head; // seats[0] is the current player
+    g.boardHand = new Set(s.board);
+    g.boardName = s.boardName;
+    g.boardScore = s.boardScore;
+    g.boardHigh = s.boardHigh;
+    g.numPasses = s.numPasses;
+    g.firstMoveMade = s.firstMoveMade;
+    return g;
   }
 
   private shuffle(array: number[]) {
